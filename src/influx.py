@@ -328,10 +328,10 @@ class InfluxWriter:
 
   def writeDataFrame(self, df, cols=['_time', '_field', '_value', '_measurement']):
     points = []
-    const WRITE_THRESHOLD = 20
+    WRITE_THRESHOLD = 20
     for index, row in df.iterrows():
       if len(points) == WRITE_THRESHOLD:
-        getWriteClient.write(bucket=self.bucket, org=self.org, precision=self.precision, record=points)
+        getWriteClient().write(bucket=self.bucket, org=self.org, precision=self.precision, record=points)
         points[:] = []
       else:
         points.append({
@@ -343,4 +343,4 @@ class InfluxWriter:
         })
 
     if len(points) > 0:
-        getWriteClient.write(bucket=self.bucket, org=self.org, precision=self.precision, record=points)
+        getWriteClient().write(bucket=self.bucket, org=self.org, precision=self.precision, record=points)
