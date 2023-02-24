@@ -319,4 +319,28 @@ class InfluxWriter:
     return self
   
   def write(self, point):
+    """Write point into influxDB
+        Parameters:
+        ----------
+        + point: point or array of points. Each point should have "measurement", "time", "fields". "fields" is a dict.
+    """
     getWriteClient().write(bucket=self.bucket, org=self.org, precision=self.precision, record=point)
+
+  def writeDataFrame(self, df, cols=['_time', '_field', '_value', '_measurement']):
+    points = []
+    const WRITE_THRESHOLD = 20
+    for index, row in df.iterrows():
+      if len(points) == WRITE_THRESHOLD:
+        getWriteClient.write(bucket=self.bucket, org=self.org, precision=self.precision, record=points)
+        points[:] = []
+      else:
+        points.append({
+          "time": row[cols[0]], 
+          "measurement": row[cols[3]],
+          "fields": {
+            row[cols[1]]: row[cols[2]]
+          }
+        })
+
+    if len(points) > 0:
+        getWriteClient.write(bucket=self.bucket, org=self.org, precision=self.precision, record=points)
