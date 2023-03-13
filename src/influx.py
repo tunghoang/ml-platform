@@ -67,6 +67,7 @@ class Influx:
     self.rate = rate
     self.timezone = timezone
     self.interpolation = interpolation
+    self.fillPrevious = False
     self.debug = False
 
   def from_now(self, minutes: int):
@@ -172,8 +173,7 @@ class Influx:
     q = None
     if len(self.fields) > 0:
       filter_str = " ".join([('or r._field == "' + f + '"') for f in self.fields])
-      q = f'''import "interpolate"
-from(bucket: "{self.bucket}")
+      q = f'''from(bucket: "{self.bucket}")
 |> range(start: {int(self.start.timestamp())}, stop: {int(self.stop.timestamp())})
 |> filter(fn: (r) => r._field == "{self.measurement}" { filter_str })'''
     else:
@@ -181,8 +181,12 @@ from(bucket: "{self.bucket}")
 from(bucket: "{self.bucket}")
 |> range(start: {int(self.start.timestamp())}, stop: {int(self.stop.timestamp())})'''
       
-    if self.interpolation:
+    if self.fillPrevious:
+      q += f'''|> aggregateWindow(every: {self.rate}, fn: mean, createEmpty: true)
+|> fill(usePrevious: true)'''
+    elif self.interpolation:
       q += f'|> aggregateWindow(every: {self.rate}, fn: mean, createEmpty: false)'
+    
     if self.debug:
       print(q)
     return q
@@ -198,6 +202,7 @@ from(bucket: "{self.bucket}")
       q = f'''import "interpolate"
 from(bucket: "{self.bucket}")
 |> range(start: {int(self.start.timestamp())}, stop: {int(self.stop.timestamp())})'''
+    
     q = f"""data = {q}
 maxTable = data |> max()
 minTable = data |> min()
@@ -255,6 +260,17 @@ union(tables: [maxTable, minTable])"""
     self.interpolation = interpolation
     return self
   
+  def setFillPrevious(self, fillPrevious: bool) :
+    """Set fillPrevious
+    
+    Parameters:
+    ----------
+    + fillPrevious: bool
+      fillPrevious property of the Influx instance. This will fill Null value with previous non-null value
+    """
+    self.fillPrevious = fillPrevious
+    return self
+    
   def setBucket(self, bucket: str): 
     """Set read bucket
     
