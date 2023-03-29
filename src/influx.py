@@ -175,6 +175,7 @@ class Influx:
       filter_str = " ".join([('or r._field == "' + f + '"') for f in self.fields])
       q = f'''from(bucket: "{self.bucket}")
 |> range(start: {int(self.start.timestamp())}, stop: {int(self.stop.timestamp())})
+|> filter(fn: (r) => r._measurement == "{self.measurement}")
 |> filter(fn: (r) => r._field == "{self.measurement}" { filter_str })'''
     else:
       q = f'''import "interpolate"
@@ -220,10 +221,10 @@ union(tables: [maxTable, minTable])"""
       pd.DataFrame: DataFrame of query result with time formatted by timezone
     """
     results = getQueryClient().query_data_frame(self.__query(), self.org)
+    if type(results) == list:
+      results = pd.concat(results)
     if results.empty:
       return results
-    if type(results) == list:
-      results = results.concat()
     results['_time'] = results._time.dt.tz_convert(self.timezone)
     results['_start'] = results._time.dt.tz_convert(self.timezone)
     results['_stop'] = results._time.dt.tz_convert(self.timezone)
