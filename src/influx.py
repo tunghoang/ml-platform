@@ -33,7 +33,7 @@ def getWriteClient():
 
 class Influx:
   """A supporting class to query data from InfluxDB"""
-  def __init__(self, org: Optional[str] = 'BDPOC', fields: Optional["list[str]"] = None, bucket: Optional[str] = 'datahub-test', measurement: Optional[str] = "phdpeer", start: Optional[str] = None, stop: Optional[str] = None, rate: Optional[str] = '30s', timezone: Optional[str] = "Asia/Ho_Chi_Minh", interpolation: Optional[bool] = True):
+  def __init__(self, org: Optional[str] = 'BDPOC', fields: Optional["list[str]"] = None, bucket: Optional[str] = 'datahub-test', measurement: Optional[str] = "phdpeer", start: Optional[str] = None, stop: Optional[str] = None, rate: Optional[str] = '30s', timezone: Optional[str] = "Asia/Ho_Chi_Minh", interpolation: Optional[bool] = True, tail: Optional[int] = None):
     """Create a new Influx instance
 
         Parameters:
@@ -56,6 +56,8 @@ class Influx:
             Timezone, default to &#39;Asia/Ho_Chi_Minh&#39;
         + interpolation: Optional[bool]
             Data will be interpolated if True. Default is True
+        + tail: Optional[int]
+            get only tail record
     """
     self.org = org or 'BDPOC'
     self.bucket = bucket
@@ -69,6 +71,8 @@ class Influx:
     self.interpolation = interpolation
     self.fillPrevious = False
     self.debug = False
+    self.tail = tail
+    self.rawQuery = None
 
   def from_now(self, minutes: int):
     """Set start and stop time for the query relatively with current time
@@ -148,19 +152,24 @@ class Influx:
     self.stop = stop or self.stop
     return self
 
-  def setRate(self, rate: str):
+  def setRate(self, rate):
     """Set rate to query with aggregation
 
     Parameters:
     ----------
     + rate: str
       Rate per window in string format
+      If rate is None. There will be no aggregation
 
     Returns:
     -------
       Influx: Influx instance
     """
-    self.rate = rate or self.rate
+    self.rate = rate
+    return self
+
+  def setTail(self, tail):
+    self.tail = tail
     return self
 
   def __query(self) -> str:
@@ -170,6 +179,9 @@ class Influx:
     -------
       str: Query in string format
     """
+    if self.rawQuery:
+      return self.rawQuery
+
     q = None
     if len(self.fields) > 0:
       filter_str = " ".join([('or r._field == "' + f + '"') for f in self.fields])
@@ -181,13 +193,19 @@ class Influx:
       q = f'''import "interpolate"
 from(bucket: "{self.bucket}")
 |> range(start: {int(self.start.timestamp())}, stop: {int(self.stop.timestamp())})'''
-      
-    if self.fillPrevious:
-      q += f'''|> aggregateWindow(every: {self.rate}, fn: mean, createEmpty: true)
-|> fill(usePrevious: true)'''
-    elif self.interpolation:
-      q += f'|> aggregateWindow(every: {self.rate}, fn: mean, createEmpty: false)'
     
+    if self.rate is not None:
+      if self.fillPrevious:
+        q += f'''|> aggregateWindow(every: {self.rate}, fn: mean, createEmpty: true)
+  |> fill(usePrevious: true)'''
+      else:
+        if self.interpolation:
+          q += f'|> aggregateWindow(every: {self.rate}, fn: mean, createEmpty: false)'
+        else:
+          q += f'|> aggregateWindow(every: {self.rate}, fn: mean, createEmpty: true)'
+    if self.tail:
+      q += f'|> tail(n: {self.tail})'
+  
     if self.debug:
       print(q)
     return q
@@ -213,6 +231,13 @@ union(tables: [maxTable, minTable])"""
       print(q)
     return q
   
+  def getQuery(self) -> str:
+    return self.__query()
+
+  def setRawQuery(self, query):
+    self.rawQuery = query
+    return self
+
   def asDataFrame(self) -> pd.DataFrame:
     """Query data from InfluxDB and return as DataFrame
 
@@ -237,11 +262,14 @@ union(tables: [maxTable, minTable])"""
     -------
       pd.DataFrame: DataFrame of query result with pivot data
     """
-    results = self.asDataFrame().pivot(index="_time", columns="_field", values="_value")
-    results["_time"] = results.index
-    results = results.reset_index(drop=True)
+    try: 
+      results = self.asDataFrame().pivot(index="_time", columns="_field", values="_value")
+      results["_time"] = results.index
+      results = results.reset_index(drop=True)
     
-    return results
+      return results
+    except:
+      return pd.DataFrame()
   
   def asMinMaxDataFrame(self) -> pd.DataFrame:
     results = getQueryClient().query_data_frame(self.__query_min_max(), self.org)
