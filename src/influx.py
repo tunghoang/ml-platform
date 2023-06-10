@@ -184,11 +184,11 @@ class Influx:
 
     q = None
     if len(self.fields) > 0:
+      measurement_str = f'|> filter(fn: (r) => r._measurement == "{self.measurement}")' if self.measurement else ""
       filter_str = " ".join([('or r._field == "' + f + '"') for f in self.fields])
       q = f'''from(bucket: "{self.bucket}")
 |> range(start: {int(self.start.timestamp())}, stop: {int(self.stop.timestamp())})
-|> filter(fn: (r) => r._measurement == "{self.measurement}")
-|> filter(fn: (r) => r._field == "{self.measurement}" { filter_str })'''
+{measurement_str} |> filter(fn: (r) => r._field == "loremipsum" { filter_str })'''
     else:
       q = f'''import "interpolate"
 from(bucket: "{self.bucket}")
@@ -205,7 +205,6 @@ from(bucket: "{self.bucket}")
           q += f'|> aggregateWindow(every: {self.rate}, fn: mean, createEmpty: true)'
     if self.tail:
       q += f'|> tail(n: {self.tail})'
-  
     if self.debug:
       print(q)
     return q
