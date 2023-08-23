@@ -180,6 +180,8 @@ class Influx:
       str: Query in string format
     """
     if self.rawQuery:
+      if self.debug:
+        print(self.rawQuery)
       return self.rawQuery
 
     q = None
@@ -215,7 +217,7 @@ from(bucket: "{self.bucket}")
       filter_str = " ".join([('or r._field == "' + f + '"') for f in self.fields])
       q = f'''from(bucket: "{self.bucket}")
 |> range(start: {int(self.start.timestamp())}, stop: {int(self.stop.timestamp())})
-|> filter(fn: (r) => r._field == "{self.measurement}" { filter_str })'''
+|> filter(fn: (r) => r._field == "loremipsum" { filter_str })'''
     else:
       q = f'''import "interpolate"
 from(bucket: "{self.bucket}")
@@ -237,7 +239,7 @@ union(tables: [maxTable, minTable])"""
     self.rawQuery = query
     return self
 
-  def asDataFrame(self) -> pd.DataFrame:
+  def asDataFrame(self, convert_time=True) -> pd.DataFrame:
     """Query data from InfluxDB and return as DataFrame
 
     Returns:
@@ -249,9 +251,10 @@ union(tables: [maxTable, minTable])"""
       results = pd.concat(results)
     if results.empty:
       return results
-    results['_time'] = results._time.dt.tz_convert(self.timezone)
-    results['_start'] = results._time.dt.tz_convert(self.timezone)
-    results['_stop'] = results._time.dt.tz_convert(self.timezone)
+    if (convert_time):
+      results['_time'] = results._time.dt.tz_convert(self.timezone)
+      results['_start'] = results._time.dt.tz_convert(self.timezone)
+      results['_stop'] = results._time.dt.tz_convert(self.timezone)
     return results
 
   def asPivotDataFrame(self) -> pd.DataFrame:
